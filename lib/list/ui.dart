@@ -1,74 +1,105 @@
-import 'dart:async';
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_onya_list/list/bloc.dart';
+import 'package:flutter_onya_list/common/debouncer.dart';
+import 'package:flutter_onya_list/list/bloc/bloc.dart';
+import 'package:flutter_onya_list/list/bloc/event.dart';
+import 'package:flutter_onya_list/list/bloc/state.dart';
+import 'package:flutter_onya_list/models/filter_trade.dart';
+import 'package:flutter_onya_list/models/filter_trade_wit_selection.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:grouped_list/grouped_list.dart';
 
-import '../debouncer.dart';
 
-class OnyaList extends StatelessWidget {
+class FilterList extends StatelessWidget {
 
-  Color colorOrange = Color(0xfff87330);
-  Color colorGrey = Color(0xffb0b0b0);
+  static const Color colorOrange = Color(0xfff87330);
+  static const Color colorGrey = Color(0xffb0b0b0);
 
+  final _debouncer = Debouncer(500);
 
- final _debouncer = Debouncer(500);
+  List<FilterTrade> filterTrades;
 
+  FilterList(filterTrades){
+    this.filterTrades = filterTrades ?? [];
+  }
 
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-        create: (context) => OnyaListBloc()..add(InitEvent()),
+        create: (context) => ListBloc()..add(InitEvent(filterTrades)),
 
         child: Builder(
-          builder: (context) => Scaffold(
-              appBar: AppBar(
-                title: Text("onya",
-                    style: TextStyle(
-                      color: colorOrange,
-                      fontSize: 25,
-                      fontWeight: FontWeight.bold,
-                    )),
-                elevation: 0.0,
-                centerTitle: true,
-                backgroundColor: Color(0xfff7f7f7),
-                leading: IconButton(
-                    icon: SvgPicture.asset(
-                  'assets/backButton.svg',
-                  color: colorOrange,
-                  height: 22,
-                )),
-              ),
+          builder: (context) => WillPopScope(
 
+            onWillPop: () async => onWillPopScope(context.read<ListBloc>().state, context),
 
-              body: SingleChildScrollView(
-                child: Column(
-                  children: [ _buildSearchBar(context),
-
-                    BlocBuilder<OnyaListBloc, OnyaListState>(
-                      builder: (context, state) {
-                        if (state is InitLoadingState) {
-                          return Center(
-                            child: CircularProgressIndicator(),
-                          );
-                        }
-
-                        if (state is LoadedState) {
-                          return _buildListView(state);
-                        }
-
-                        return Center(child: Text("не предусмотренная ошибка"));
-                      },
-                    )
-
-                  ],
+            child: Scaffold(
+                appBar: AppBar(
+                  title: Text("onya",
+                      style: TextStyle(
+                        color: colorOrange,
+                        fontSize: 25,
+                        fontWeight: FontWeight.bold,
+                      )),
+                  elevation: 0.0,
+                  centerTitle: true,
+                  backgroundColor: Color(0xfff7f7f7),
+                  leading: IconButton(
+                      icon: SvgPicture.asset(
+                    'assets/icon/backButton.svg',
+                    color: colorOrange,
+                    height: 22,
+                  ),
+                  onPressed: ()=> onWillPopScope(context.read<ListBloc>().state, context),
+                  ),
                 ),
-              )),
+                body: SingleChildScrollView(
+                  child: Column(
+                    children: [ _buildSearchBar(context),
+
+                      BlocBuilder<ListBloc, ListState>(
+                        builder: (context, state) {
+                          if (state is InitLoadingState) {
+                            return Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          }
+
+                          if (state is NormalState) {
+                            return _buildListView(state, context);
+                          }
+
+                          return Center(child: Text("не предусмотренная ошибка"));
+                        },
+                      )
+
+                    ],
+                  ),
+                )),
+          ),
         ));
+  }
+
+
+  void popWithSelectionTrades(
+      List<FilterTradeWithSelection> trades, BuildContext context) {
+    Navigator.pop(
+        context,
+        trades
+            ?.where((element) => element.choice)
+            ?.map((e) => FilterTrade(id: e.id, trade: e.trade))
+            ?.toList());
+  }
+
+
+  bool onWillPopScope(ListState state, BuildContext context){
+    if (state is NormalState) {
+      popWithSelectionTrades(state.dataOfTradesAndSelection, context);
+      return false;
+    }
+    return true;
   }
 
 
@@ -94,6 +125,7 @@ class OnyaList extends StatelessWidget {
                     top: 25.0, left: 20, right: 20, bottom: 15),
                 child: Container(
                   height: 40,
+                  width: double.infinity,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.all(Radius.circular(20)),
@@ -104,22 +136,23 @@ class OnyaList extends StatelessWidget {
                     ],
                   ),
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-
-                      Expanded(
-                        child: TextField(
-                          decoration: InputDecoration(
-                              contentPadding:
-                                  EdgeInsets.only(left: 15, right: 10),
-                              border: InputBorder.none,
-                              hintText: "Search trades"),
-                          onChanged: (request)=> _debouncer.run(() => BlocProvider.of<OnyaListBloc>(context).add(FilterEvent(request))),
+                        Expanded(
+                          child: TextField(
+                            decoration: InputDecoration(
+                                contentPadding:
+                                    EdgeInsets.only(left: 15, right: 10),
+                                border: InputBorder.none,
+                                hintText: "Search trades"),
+                            onChanged: (request)=> _debouncer.run(() => BlocProvider.of<ListBloc>(context).add(FilterEvent(request))),
+                          ),
                         ),
-                      ),
+
 
                       IconButton(
                           icon: SvgPicture.asset(
-                            "assets/loupe.svg",
+                            "assets/icon/loupe.svg",
                             color: colorGrey,
                             width: 20,
                           ),
@@ -135,12 +168,12 @@ class OnyaList extends StatelessWidget {
 
 
 
-  Container _buildListView(LoadedState state) {
+  Widget _buildListView(NormalState state, BuildContext context) {
 
     return Container(
       child: GroupedListView(
         elements: state.dataOfTradesAndSelection,
-        groupBy: (TradeWithSelection element) => element.trade[0],
+        groupBy: (FilterTradeWithSelection element) => element.trade[0],
         itemBuilder: _buildItem,
         order: GroupedListOrder.ASC,
         groupSeparatorBuilder: _buildItemGroupHeaders,
@@ -156,7 +189,7 @@ class OnyaList extends StatelessWidget {
   }
 
 
-  Container _buildItem(BuildContext context, TradeWithSelection element) {
+  Container _buildItem(BuildContext context, FilterTradeWithSelection element) {
 
     return Container(
       child: InkWell(
@@ -179,7 +212,7 @@ class OnyaList extends StatelessWidget {
                   size: 20,
                 )
               : null,
-          onTap: () => BlocProvider.of<OnyaListBloc>(context)
+          onTap: () => BlocProvider.of<ListBloc>(context)
               .add(SelectionEvent(element.id)),
         ),
       ),
